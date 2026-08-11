@@ -9,6 +9,31 @@ description: Use when a PRD, product requirement, user story, acceptance criteri
 
 Turn a PRD directly into one implementation-ready OpenAPI 3.0.3 contract and a short handoff for frontend, backend, and test agents. Favor forward progress without hiding invented product decisions.
 
+## Mandatory confirmation gate
+
+First determine whether the current turn is a confirmation continuation. It is a confirmation continuation only when both conditions are true:
+
+1. the immediately preceding assistant message is exactly the confirmation question shown below; and
+2. the current user message, after trimming surrounding whitespace, is exactly `确定`.
+
+This continuation check takes precedence over treating the current turn as a new invocation, including when the skill is loaded again. On a confirmation continuation, pass the gate and proceed directly to the inputs and outputs workflow; do not repeat the question.
+
+On every other new invocation, regardless of what the user says or whether paths and attachments appear to be present, make the first response exactly:
+
+```text
+请确认prd文件+原仓库（可选）已经提供，如果已经提供请回答“确定”
+```
+
+Return no other text in that response. Before this response and before the user's confirmation:
+
+- do not inspect, open, read, or search any PRD, attachment, path, or repository;
+- do not call tools, create a plan, analyze requirements, generate artifacts, or start implementation;
+- do not treat `确定` contained in the invocation message as confirmation.
+
+If the response following the question is anything other than exact `确定`, perform no work and repeat the exact confirmation question.
+
+After the gate passes, verify that a PRD is accessible. If it is missing, ask the user to provide it; the repository remains optional. Once the missing PRD is provided, continue without repeating the confirmation gate.
+
 ## Inputs and outputs
 
 - Accept pasted PRD text or a PRD file. Read it completely.
@@ -20,7 +45,7 @@ Turn a PRD directly into one implementation-ready OpenAPI 3.0.3 contract and a s
 
 ## Inference policy
 
-Generate immediately. When the user explicitly asks for direct generation, do not block on clarification: choose the narrowest safe behavior and record it. Otherwise ask one focused question only when an unknown changes authorization, money, irreversible deletion, regulatory behavior, or another high-impact semantic and no narrow representation exists.
+After the mandatory confirmation gate passes, generate immediately. When the user explicitly asks for direct generation, do not block on clarification: choose the narrowest safe behavior and record it. Otherwise ask one focused question only when an unknown changes authorization, money, irreversible deletion, regulatory behavior, or another high-impact semantic and no narrow representation exists.
 
 Treat an omitted capability as unsupported, not as permission to design it. A constraint does not imply additional features: for example, "refund must not exceed the order amount" does not by itself authorize partial refunds, repeated refunds, asynchronous processing, or an idempotency header. Prefer one operation and the fewest states that satisfy the PRD.
 
