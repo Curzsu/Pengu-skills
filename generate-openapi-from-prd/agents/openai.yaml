@@ -1,4 +1,4 @@
 interface:
   display_name: "PRD to OpenAPI"
-  short_description: "将 PRD 转成前后端与测试共享的 OpenAPI 契约"
-  default_prompt: "使用 $generate-openapi-from-prd 将这份 PRD 转成可供前后端和测试并行使用的 OpenAPI 契约。"
+  short_description: "\u5c06 PRD \u8f6c\u6210\u524d\u540e\u7aef\u4e0e\u6d4b\u8bd5\u5171\u4eab\u7684 OpenAPI \u5951\u7ea6"
+  default_prompt: "\u4f7f\u7528 $generate-openapi-from-prd \u5c06\u8fd9\u4efd PRD \u8f6c\u6210\u53ef\u4f9b\u524d\u540e\u7aef\u548c\u6d4b\u8bd5\u5e76\u884c\u4f7f\u7528\u7684 OpenAPI \u5951\u7ea6\u3002"

@@ -11,26 +11,30 @@ Turn a PRD directly into one implementation-ready OpenAPI 3.0.3 contract and a s
 
 ## Mandatory confirmation gate
 
+The confirmation protocol uses ASCII-only JSON string literals so that Windows
+loaders cannot reinterpret literal UTF-8 Chinese bytes as GBK or ANSI. Decode
+these JSON strings to Unicode before comparing or responding; never print the
+backslash-u escape sequences themselves.
+
+CONFIRMATION_QUESTION_JSON = "\u8bf7\u786e\u8ba4prd\u6587\u4ef6+\u539f\u4ed3\u5e93\uff08\u53ef\u9009\uff09\u5df2\u7ecf\u63d0\u4f9b\uff0c\u5982\u679c\u5df2\u7ecf\u63d0\u4f9b\u8bf7\u56de\u7b54\u201c\u786e\u5b9a\u201d"
+CONFIRMATION_TOKEN_JSON = "\u786e\u5b9a"
+
 First determine whether the current turn is a confirmation continuation. It is a confirmation continuation only when both conditions are true:
 
-1. the immediately preceding assistant message is exactly the confirmation question shown below; and
-2. the current user message, after trimming surrounding whitespace, is exactly `确定`.
+1. the immediately preceding assistant message exactly equals the decoded value of `CONFIRMATION_QUESTION_JSON`; and
+2. the current user message, after trimming surrounding whitespace, exactly equals the decoded value of `CONFIRMATION_TOKEN_JSON`.
 
 This continuation check takes precedence over treating the current turn as a new invocation, including when the skill is loaded again. On a confirmation continuation, pass the gate and proceed directly to the inputs and outputs workflow; do not repeat the question.
 
-On every other new invocation, regardless of what the user says or whether paths and attachments appear to be present, make the first response exactly:
-
-```text
-请确认prd文件+原仓库（可选）已经提供，如果已经提供请回答“确定”
-```
+On every other new invocation, regardless of what the user says or whether paths and attachments appear to be present, decode `CONFIRMATION_QUESTION_JSON` and make the first response exactly that decoded Chinese text.
 
 Return no other text in that response. Before this response and before the user's confirmation:
 
 - do not inspect, open, read, or search any PRD, attachment, path, or repository;
 - do not call tools, create a plan, analyze requirements, generate artifacts, or start implementation;
-- do not treat `确定` contained in the invocation message as confirmation.
+- do not treat the decoded confirmation token contained in the invocation message as confirmation.
 
-If the response following the question is anything other than exact `确定`, perform no work and repeat the exact confirmation question.
+If the response following the question is anything other than the exact decoded value of `CONFIRMATION_TOKEN_JSON`, perform no work and repeat the exact decoded confirmation question.
 
 After the gate passes, verify that a PRD is accessible. If it is missing, ask the user to provide it; the repository remains optional. Once the missing PRD is provided, continue without repeating the confirmation gate.
 
