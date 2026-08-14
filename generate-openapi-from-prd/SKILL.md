@@ -41,11 +41,26 @@ After the gate passes, verify that a PRD is accessible. If it is missing, ask th
 ## Inputs and outputs
 
 - Accept pasted PRD text or a PRD file. Read it completely.
-- Do not require source code. If a repository is available, follow its naming and contract location conventions without reverse-engineering behavior that contradicts the PRD.
+- Do not require source code. If a repository is available, follow its naming and contract location conventions without reverse-engineering behavior that contradicts the PRD, and inspect its verified implementation constraints as described below.
 - Follow a user-specified output path. Otherwise use:
   - `api-contract/openapi.yaml`
   - `api-contract/agent-handoff.md`
 - Do not require OpenAPI Generator.
+
+## Inspect repository constraints
+
+When one or more repositories are available, inspect each repository before writing the agent handoff. Derive constraints from evidence instead of assuming the newest or locally installed tooling. Check, when present:
+
+- production and deployment configuration, including container images, deployment manifests, process definitions, and environment configuration;
+- runtime and toolchain versions declared by version files, build configuration, or project metadata;
+- dependency manifests and lockfiles, including supported runtime ranges and package-manager choice;
+- CI configuration, repository-native build and test commands, and startup or health-check commands.
+
+Prefer evidence in this order: production or deployment configuration, CI configuration, project metadata and version files, then developer documentation. Record the source path for every verified constraint. If authoritative sources disagree, report the conflict and preserve both pieces of evidence; do not silently choose one.
+
+Do not hard-code any language, framework, runtime, package manager, or version in this skill or in a generated handoff unless it is verified from the supplied repository. Do not guess missing repository constraints. If no repository is supplied or no reliable runtime evidence exists, state that runtime constraints are unknown and require the implementation agent to verify them before coding.
+
+Keep repository implementation constraints out of `openapi.yaml`; OpenAPI remains language- and framework-agnostic. Carry verified constraints, evidence, conflicts, and required verification steps only in `agent-handoff.md`.
 
 ## Inference policy
 
@@ -90,10 +105,12 @@ x-ai-assumptions:
 Write `agent-handoff.md` with the contract path, PRD source, assumptions, and these sections:
 
 - **Shared rule:** all agents use this exact contract; nobody changes fields, paths, or status codes unilaterally.
-- **Frontend agent:** implement against the schemas and examples, use a contract-derived mock when helpful, and write implementation-level frontend tests.
-- **Backend agent:** implement every operation and response, enforce constraints and ownership, and write domain/unit/integration tests.
-- **Test agent:** independently generate contract, boundary, permission, frontend, backend, and integration tests from the PRD plus OpenAPI; report contradictions instead of changing the contract.
-- **Definition of done:** relevant unit tests pass, both sides conform to OpenAPI, and at least one real frontend-backend smoke path passes before merge.
+- **Repository constraints:** for each supplied repository, list verified language/runtime/toolchain, framework and dependency constraints, package manager, repository-native commands, and the evidence path for each value. If none are verified, state that runtime constraints are unknown.
+- **Conflicts or unknowns:** list conflicting or missing repository evidence and the decision the responsible implementation agent must resolve before coding; do not turn unknowns into assumptions.
+- **Frontend agent:** implement against the schemas and examples, use a contract-derived mock when helpful, obey the verified repository constraints, and write implementation-level frontend tests. Do not use syntax, APIs, or dependencies unsupported by the verified target runtime or toolchain.
+- **Backend agent:** implement every operation and response, enforce constraints and ownership, obey the verified repository constraints, and write domain/unit/integration tests. Do not use language syntax, standard-library APIs, or dependency versions unsupported by the verified target runtime or toolchain.
+- **Test agent:** independently generate contract, boundary, permission, frontend, backend, and integration tests from the PRD plus OpenAPI; report contradictions instead of changing the contract. When a deployment environment is identifiable, test with the exact deployment runtime or container and include an application import or equivalent startup preflight plus service startup and health check when applicable.
+- **Definition of done:** relevant unit tests pass, both sides conform to OpenAPI, each implementation passes its repository-native checks under the verified target environment, and at least one real frontend-backend smoke path passes before merge. Dependency changes must update the repository's manifest and lockfile when applicable.
 
 Keep the handoff under one page. Do not repeat the full OpenAPI document.
 
@@ -112,7 +129,10 @@ Fix every reported problem. If the repository already has a stronger OpenAPI lin
 - every operation has a unique `operationId` and an explicit 2xx response;
 - every local `$ref` resolves;
 - examples match their schemas;
-- handoff names and paths match the contract.
+- handoff names and paths match the contract;
+- every supplied repository has either evidence-backed constraints or an explicit unknown marker;
+- every verified constraint cites a repository path and every conflict is reported;
+- target-environment verification includes repository-native checks and startup validation when the repository exposes them.
 
 ## Completion
 
@@ -127,3 +147,5 @@ Return links to `openapi.yaml` and `agent-handoff.md`, plus only the recorded as
 | Generating implementation architecture | Keep the artifact at HTTP contract level. |
 | Treating unit tests as integration proof | Require contract checks and one real smoke path. |
 | Making three agents interpret different copies | Hand off one versioned file from one shared path. |
+| Hard-coding a runtime after one compatibility incident | Derive technology and version constraints from each supplied repository. |
+| Testing only in the agent's local environment | Verify with the repository's deployment runtime or container when available. |
