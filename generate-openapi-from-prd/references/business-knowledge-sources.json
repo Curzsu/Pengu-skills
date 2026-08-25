@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "xinxintong": {
+      "remote": "http://gitlab.devops.com/ops/project-docs.git",
+      "ref": "master",
+      "documents": {
+        "product-overview": {
+          "path": "products/xinxintong/product-overview.md",
+          "authority": "background"
+        }
+      }
+    }
+  }
+}

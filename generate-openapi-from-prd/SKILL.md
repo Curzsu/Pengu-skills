@@ -47,6 +47,21 @@ After the gate passes, verify that a PRD is accessible. If it is missing, ask th
   - `api-contract/agent-handoff.md`
 - Do not require OpenAPI Generator.
 
+## Optional business knowledge
+
+After the confirmation gate passes, use the bundled business knowledge CLI only when the PRD concerns Xinxintong and business vocabulary, roles, flows, or current capabilities need background context. Resolve the script relative to this skill directory.
+
+Use this retrieval shape:
+
+1. Run `python scripts/query_business_knowledge.py status --source xinxintong --document product-overview` when source freshness or availability matters.
+2. Run `python scripts/query_business_knowledge.py search --source xinxintong --document product-overview --query "<specific business terms>"` first.
+3. Run `python scripts/query_business_knowledge.py sections --source xinxintong --document product-overview` only when search terms are unclear.
+4. Run `python scripts/query_business_knowledge.py get --source xinxintong --document product-overview --heading "<exact returned heading>"` for each relevant section. Do not load the full document by default.
+
+Treat retrieved content as background, not as requirements. The user's explicit decisions and the current PRD define target behavior. Use background to clarify meaning and current context, but never add endpoints, fields, states, or permissions that the PRD does not require. If background conflicts with the PRD, keep the PRD behavior and record the conflict for the handoff unless the inference policy requires a focused question.
+
+For every retrieved section, retain its commit, path, line range, freshness, and citation URL. Do not copy Git credentials, cache paths, or unrelated sections into generated artifacts.
+
 ## Inspect repository constraints
 
 When one or more repositories are available, inspect each repository before writing the agent handoff. Derive constraints from evidence instead of assuming the newest or locally installed tooling. Check, when present:
@@ -105,6 +120,7 @@ x-ai-assumptions:
 Write `agent-handoff.md` with the contract path, PRD source, assumptions, and these sections:
 
 - **Shared rule:** all agents use this exact contract; nobody changes fields, paths, or status codes unilaterally.
+- **Business context consulted:** when the business knowledge CLI was used, list each consulted heading with commit, path, line range, freshness, citation URL, and any conflict with the PRD. Otherwise state that no business context was consulted.
 - **Repository constraints:** for each supplied repository, list verified language/runtime/toolchain, framework and dependency constraints, package manager, repository-native commands, and the evidence path for each value. If none are verified, state that runtime constraints are unknown.
 - **Conflicts or unknowns:** list conflicting or missing repository evidence and the decision the responsible implementation agent must resolve before coding; do not turn unknowns into assumptions.
 - **Frontend agent:** implement against the schemas and examples, use a contract-derived mock when helpful, obey the verified repository constraints, and write implementation-level frontend tests. Do not use syntax, APIs, or dependencies unsupported by the verified target runtime or toolchain.
@@ -133,6 +149,7 @@ Fix every reported problem. If the repository already has a stronger OpenAPI lin
 - every supplied repository has either evidence-backed constraints or an explicit unknown marker;
 - every verified constraint cites a repository path and every conflict is reported;
 - target-environment verification includes repository-native checks and startup validation when the repository exposes them.
+- business background, when consulted, is cited in the handoff and has not expanded the PRD's API surface.
 
 ## Completion
 
