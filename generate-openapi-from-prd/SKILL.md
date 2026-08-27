@@ -90,6 +90,34 @@ Use this retrieval shape:
 3. Run `python scripts/query_business_knowledge.py sections --source xinxintong --document product-overview` only when search terms are unclear.
 4. Run `python scripts/query_business_knowledge.py get --source xinxintong --document product-overview --heading "<exact returned heading>"` for each relevant section. Do not load the full document by default.
 
+### User-visible retrieval receipts
+
+Make business-knowledge retrieval observable so the user can catch a wrong query or section choice while work is still in progress. Use the user's language and present semantic results rather than terminal output.
+
+Immediately before each business knowledge CLI call, tell the user what will be queried or opened in one short progress sentence. After every `search` or `sections` result, send a compact user-visible retrieval receipt before the next CLI call. Include:
+
+- the query or discovery purpose and the result count;
+- every returned `search` heading and a short snippet for each `search` match;
+- the total number of section headings plus only the candidate `sections` headings selected for inspection;
+- source freshness, any warnings, a short commit, and a citation URL when the result provides one;
+- a clear label that the material is background context rather than PRD requirements.
+
+After every successful `get`, send another compact receipt stating which heading was opened, why it is relevant, its line range, short commit, and citation URL. Summarize the useful evidence in one or two sentences instead of reproducing it. After the last `get`, identify which returned matches were not opened and briefly say why.
+
+Show a zero matches result, stale source or warning, or CLI error explicitly. State whether the next step is a narrower query, a different query, or to continue from the PRD alone. Do not wait for approval after a receipt; continue the workflow unless the inference policy independently requires a focused question. Do not defer all retrieval details to the final handoff.
+
+Keep receipts safe and readable. Do not paste raw JSON, ranking scores, Git credentials, local cache paths, unrelated sections, or full section content. If the user asks for more detail, expand only sanitized snippets, summaries, and citations.
+
+Example shape, rendered in the user's language:
+
+```text
+Business knowledge search: <query>
+Found <count> matches:
+- <heading> - <short snippet>
+Source: <freshness or warning>; version <short commit>; <citation URL>
+Use: background context only; selected <heading> because <reason>.
+```
+
 Treat retrieved content as background, not as requirements. The user's explicit decisions and the current PRD define target behavior. Use background to clarify meaning and current context, but never add endpoints, fields, states, or permissions that the PRD does not require. If background conflicts with the PRD, keep the PRD behavior and record the conflict for the handoff unless the inference policy requires a focused question.
 
 For every retrieved section, retain its commit, path, line range, freshness, and citation URL. Do not copy Git credentials, cache paths, or unrelated sections into generated artifacts.
