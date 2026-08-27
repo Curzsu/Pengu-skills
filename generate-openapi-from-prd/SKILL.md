@@ -13,28 +13,60 @@ Turn a PRD directly into one implementation-ready OpenAPI 3.0.3 contract and a s
 
 The confirmation protocol uses ASCII-only JSON string literals so that Windows
 loaders cannot reinterpret literal UTF-8 Chinese bytes as GBK or ANSI. Decode
-these JSON strings to Unicode before comparing or responding; never print the
-backslash-u escape sequences themselves.
+these JSON values to Unicode before comparing or responding; never print the
+backslash-u escape sequences themselves. The reply arrays are examples of
+clear intent, not substring patterns.
 
-CONFIRMATION_QUESTION_JSON = "\u8bf7\u786e\u8ba4prd\u6587\u4ef6+\u539f\u4ed3\u5e93\uff08\u53ef\u9009\uff09\u5df2\u7ecf\u63d0\u4f9b\uff0c\u5982\u679c\u5df2\u7ecf\u63d0\u4f9b\u8bf7\u56de\u7b54\u201c\u786e\u5b9a\u201d"
-CONFIRMATION_TOKEN_JSON = "\u786e\u5b9a"
+CONFIRMATION_QUESTION_JSON = "\u8bf7\u786e\u8ba4 PRD \u6587\u4ef6\u548c\u539f\u4ed3\u5e93\uff08\u53ef\u9009\uff09\u5df2\u7ecf\u63d0\u4f9b\u3002\u56de\u590d\u201c\u786e\u5b9a\u201d\u7ee7\u7eed\uff0c\u56de\u590d\u201c\u53d6\u6d88\u201d\u9000\u51fa\u3002"
+AFFIRMATIVE_REPLIES_JSON = ["\u786e\u5b9a","\u786e\u8ba4","\u662f","\u662f\u7684","\u53ef\u4ee5","\u597d","\u597d\u7684","\u884c","\u7ee7\u7eed","ok","ok\u4e86","okay","yes"]
+CANCELLATION_REPLIES_JSON = ["\u53d6\u6d88","\u505c\u6b62","\u9000\u51fa","\u4e0d\u7528\u4e86","\u4e0d\u9700\u8981","\u5148\u4e0d\u505a","cancel","stop","no"]
+CANCELLATION_RESPONSE_JSON = "\u5df2\u53d6\u6d88\u3002\u672c\u6b21\u672a\u8bfb\u53d6 PRD \u6216\u4ed3\u5e93\uff0c\u4e5f\u672a\u751f\u6210\u4efb\u4f55\u6587\u4ef6\u3002"
+AMBIGUOUS_REPROMPT_JSON = "\u6211\u8fd8\u6ca1\u6709\u5f00\u59cb\u5de5\u4f5c\u3002\u8bf7\u56de\u590d\u201c\u786e\u5b9a\u201d\u7ee7\u7eed\uff0c\u6216\u56de\u590d\u201c\u53d6\u6d88\u201d\u9000\u51fa\u3002"
+AMBIGUOUS_EXIT_JSON = "\u672a\u6536\u5230\u660e\u786e\u9009\u62e9\uff0c\u672c\u6b21\u5df2\u7ed3\u675f\u4e14\u672a\u5f00\u59cb\u4efb\u4f55\u5de5\u4f5c\u3002\u51c6\u5907\u597d\u540e\u8bf7\u91cd\u65b0\u8c03\u7528\u3002"
 
-First determine whether the current turn is a confirmation continuation. It is a confirmation continuation only when both conditions are true:
+Treat the gate as a state machine. Infer an unresolved confirmation request
+from the visible conversation, not from exact serialization of an assistant
+message. A request is pending when the most recent gate question or reprompt
+has no later confirmation, cancellation, or terminal exit. Recognize the
+decoded question or reprompt even when the assistant or host adds formatting,
+labels, or status text around it. Do not require whole-message equality.
 
-1. the immediately preceding assistant message exactly equals the decoded value of `CONFIRMATION_QUESTION_JSON`; and
-2. the current user message, after trimming surrounding whitespace, exactly equals the decoded value of `CONFIRMATION_TOKEN_JSON`.
-
-This continuation check takes precedence over treating the current turn as a new invocation, including when the skill is loaded again. On a confirmation continuation, pass the gate and proceed directly to the inputs and outputs workflow; do not repeat the question.
-
-On every other new invocation, regardless of what the user says or whether paths and attachments appear to be present, decode `CONFIRMATION_QUESTION_JSON` and make the first response exactly that decoded Chinese text.
-
-Return no other text in that response. Before this response and before the user's confirmation:
+On a new invocation with no pending request, regardless of what the user says
+or whether paths and attachments appear to be present, respond with exactly the
+decoded value of `CONFIRMATION_QUESTION_JSON`. Return no other text. Before this
+response and before the user's confirmation:
 
 - do not inspect, open, read, or search any PRD, attachment, path, or repository;
 - do not call tools, create a plan, analyze requirements, generate artifacts, or start implementation;
-- do not treat the decoded confirmation token contained in the invocation message as confirmation.
+- do not treat an affirmative reply contained in the invocation message as confirmation.
 
-If the response following the question is anything other than the exact decoded value of `CONFIRMATION_TOKEN_JSON`, perform no work and repeat the exact decoded confirmation question.
+When a request is pending, normalize the whole current reply with Unicode NFKC,
+trim surrounding whitespace and quote marks, remove only final sentence
+punctuation, and lowercase ASCII letters. Classify the normalized whole reply:
+
+- **Affirmative:** its complete meaning is a short, unconditional authorization
+  to continue. Values in `AFFIRMATIVE_REPLIES_JSON` and close standalone
+  synonyms qualify.
+- **Cancellation:** its complete meaning is to cancel, stop, exit, or not
+  proceed. Values in `CANCELLATION_REPLIES_JSON` and close standalone synonyms
+  qualify. Cancellation wins if a reply contains conflicting intent.
+- **Ambiguous:** everything else. Never confirm from a substring. A reply with
+  conditions, extra instructions, contradiction, or negation is not affirmative.
+
+Apply these transitions:
+
+| Starting condition | Reply class | Action |
+|---|---|---|
+| No pending request | Any | Ask `CONFIRMATION_QUESTION_JSON`; stay pending. |
+| Pending after the initial question | Affirmative | Pass the gate and continue the workflow in the same turn. |
+| Pending after the reprompt | Affirmative | Pass the gate and continue the workflow in the same turn. |
+| Pending | Cancellation | Respond with exactly `CANCELLATION_RESPONSE_JSON`; do no work; close the request. |
+| Pending after the initial question | Ambiguous | Respond with exactly `AMBIGUOUS_REPROMPT_JSON`; do no work; stay pending. |
+| Pending after the reprompt | Ambiguous | Respond with exactly `AMBIGUOUS_EXIT_JSON`; do no work; close the request. |
+
+This caps consecutive ambiguous replies at two without relying on a hidden
+counter: the decoded reprompt marks the second and final chance. After a request
+is confirmed or closed, do not reuse it as confirmation for a later invocation.
 
 After the gate passes, verify that a PRD is accessible. If it is missing, ask the user to provide it; the repository remains optional. Once the missing PRD is provided, continue without repeating the confirmation gate.
 
