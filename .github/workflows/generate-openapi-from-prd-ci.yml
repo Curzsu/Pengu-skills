@@ -45,3 +45,22 @@ jobs:
 
       - name: Run generate-openapi-from-prd tests
         run: python -m unittest discover -s generate-openapi-from-prd/scripts -p "test_*.py"
+
+  # Branch protection on master requires a check named exactly
+  # "generate-openapi-from-prd-tests". The matrix above reports one check per
+  # combination, so report that stable name from a summary gate; renaming or
+  # expanding the matrix then never leaves a PR stuck waiting for a check that
+  # no longer exists.
+  tests-pass:
+    name: generate-openapi-from-prd-tests
+    needs: test
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Matrix result
+        run: echo "matrix result - ${{ needs.test.result }}"
+
+      - name: Fail when any matrix job failed
+        if: ${{ needs.test.result != 'success' }}
+        run: exit 1
