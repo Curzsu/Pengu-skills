@@ -18,18 +18,27 @@ concurrency:
 
 jobs:
   test:
-    name: generate-openapi-from-prd-tests
-    runs-on: ubuntu-latest
+    name: generate-openapi-from-prd-tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows and macOS are where the loader-encoding and runtime-version
+        # incidents actually happened; 3.9 is the oldest Python the skill
+        # scripts must still run on, 3.10 keeps the previously verified
+        # baseline, and 3.14 guards forward compatibility.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.9", "3.10", "3.14"]
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v7
         with:
-          python-version: "3.10"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install test dependency
         run: python -m pip install --disable-pip-version-check "PyYAML>=6,<7"
