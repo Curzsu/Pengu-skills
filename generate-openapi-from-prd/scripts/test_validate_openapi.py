@@ -7,6 +7,8 @@ import textwrap
 import unittest
 from pathlib import Path
 
+import yaml
+
 
 SCRIPT = Path(__file__).with_name("validate_openapi.py")
 
@@ -59,6 +61,60 @@ components:
 
 
 class ValidateOpenApiTests(unittest.TestCase):
+    def test_rejects_invalid_openapi_structures(self) -> None:
+        for case in ("schema_type", "null_response", "missing_description", "invalid_parameter"):
+            with self.subTest(case=case):
+                document = yaml.safe_load(VALID_SPEC)
+                response = document["paths"]["/todos/{todoId}"]["get"]["responses"]
+                if case == "schema_type":
+                    document["components"]["schemas"]["Todo"]["type"] = "nonsense"
+                elif case == "null_response":
+                    response["200"] = None
+                elif case == "missing_description":
+                    del response["200"]["description"]
+                else:
+                    document["paths"]["/todos/{todoId}"]["get"]["parameters"][0]["in"] = "invalid"
+                result = run_validator(yaml.safe_dump(document))
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("[OPENAPI_STANDARD]", result.stdout)
+                self.assertNotIn("Traceback", result.stderr)
+
+    def test_reports_schema_error_location_before_project_rules(self) -> None:
+        document = yaml.safe_load(VALID_SPEC)
+        document["components"]["schemas"]["Todo"]["type"] = "nonsense"
+        document["x-ai-assumptions"] = "invalid"
+        result = run_validator(yaml.safe_dump(document))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("/components/schemas/Todo", result.stdout)
+        self.assertNotIn("x-ai-assumptions", result.stdout)
+
+    def test_accepts_no_content_response(self) -> None:
+        document = yaml.safe_load(VALID_SPEC)
+        document["paths"]["/todos/{todoId}"]["get"]["responses"] = {
+            "204": {"description": "No content"}
+        }
+        result = run_validator(yaml.safe_dump(document))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_external_references_without_resolving_them(self) -> None:
+        for reference in ("missing.yaml#/Todo", "https://example.invalid/spec.yaml#/Todo"):
+            with self.subTest(reference=reference):
+                result = run_validator(VALID_SPEC.replace("#/components/schemas/Todo", reference))
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("[REFERENCE]", result.stdout)
+                self.assertIn("local", result.stdout)
+                self.assertNotIn("Traceback", result.stderr)
+
+    def test_requires_exact_contract_version(self) -> None:
+        result = run_validator(VALID_SPEC.replace("3.0.3", "3.0.2"))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("3.0.3", result.stdout)
+
+    def test_project_rules_still_require_operation_id(self) -> None:
+        result = run_validator(VALID_SPEC.replace("      operationId: getTodo\n", ""))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("operationId is required", result.stdout)
+
     def test_accepts_minimal_valid_contract(self) -> None:
         result = run_validator(VALID_SPEC)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -80,7 +136,8 @@ components:
             )
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("duplicate operationId", result.stdout)
+        self.assertIn("[OPENAPI_STANDARD]", result.stdout)
+        self.assertIn("getTodo", result.stdout)
 
     def test_rejects_undefined_path_parameter(self) -> None:
         result = run_validator(
@@ -96,7 +153,8 @@ components:
             """
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("path parameter 'todoId'", result.stdout)
+        self.assertIn("[OPENAPI_STANDARD]", result.stdout)
+        self.assertIn("todoId", result.stdout)
 
     def test_rejects_unresolved_local_reference(self) -> None:
         result = run_validator(VALID_SPEC.replace("#/components/schemas/Todo", "#/components/schemas/Missing"))

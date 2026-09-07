@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run lightweight, dependency-minimal checks on an OpenAPI YAML contract."""
+"""Validate an OpenAPI contract against the standard, then project rules."""
 
 from __future__ import annotations
 
@@ -10,8 +10,11 @@ from typing import Any, Iterable
 
 try:
     import yaml
+    from openapi_spec_validator import OpenAPIV30SpecValidator
+    from referencing.exceptions import Unresolvable
 except ModuleNotFoundError:  # pragma: no cover - environment-specific failure
-    print("ERROR: PyYAML is required to validate OpenAPI YAML (python -m pip install pyyaml).")
+    requirements = Path(__file__).resolve().parents[1] / "requirements.txt"
+    print(f'ERROR: validator dependencies are missing (python -m pip install -r "{requirements}").')
     raise SystemExit(2)
 
 
@@ -35,16 +38,16 @@ def resolve_pointer(document: Any, reference: str) -> Any:
     return current
 
 
-def iter_local_references(value: Any) -> Iterable[str]:
+def iter_references(value: Any) -> Iterable[str]:
     if isinstance(value, dict):
         reference = value.get("$ref")
-        if isinstance(reference, str) and reference.startswith("#/"):
+        if isinstance(reference, str):
             yield reference
         for child in value.values():
-            yield from iter_local_references(child)
+            yield from iter_references(child)
     elif isinstance(value, list):
         for child in value:
-            yield from iter_local_references(child)
+            yield from iter_references(child)
 
 
 def iter_strings(value: Any) -> Iterable[str]:
@@ -69,7 +72,60 @@ def resolve_parameter(document: dict[str, Any], parameter: Any) -> Any:
     return parameter
 
 
+def validate_standard(document: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+
+    def collect(iterator: Iterable[Any]) -> None:
+        for error in iterator:
+            parts = [
+                str(part).replace("~", "~0").replace("/", "~1")
+                for part in error.absolute_path
+            ]
+            location = "/" + "/".join(parts) if parts else "<root>"
+            errors.append(
+                f"[OPENAPI_STANDARD] {location}: {type(error).__name__}: {error.message}"
+            )
+
+    try:
+        # 0.7.2 continues into semantic checks even after structural errors;
+        # reject those first so malformed objects cannot crash that traversal.
+        collect(OpenAPIV30SpecValidator.schema_validator.iter_errors(document))
+        if errors:
+            return errors
+        collect(OpenAPIV30SpecValidator(document).iter_errors())
+    except (Unresolvable, RecursionError) as error:
+        errors.append(
+            f"[OPENAPI_STANDARD] reference validation could not complete: {type(error).__name__}"
+        )
+    return errors
+
+
 def validate(document: Any) -> list[str]:
+    if not isinstance(document, dict):
+        return ["document root must be an object"]
+    if document.get("openapi") != "3.0.3":
+        return ["openapi must declare version 3.0.3"]
+
+    # Single-file contracts must not depend on external files or network access.
+    errors: list[str] = []
+    for reference in sorted(set(iter_references(document))):
+        if not reference.startswith("#/"):
+            errors.append(f"[REFERENCE] only local #/ references are supported: {reference}")
+            continue
+        try:
+            resolve_pointer(document, reference)
+        except KeyError:
+            errors.append(f"[REFERENCE] unresolved $ref: {reference}")
+    if errors:
+        return errors
+
+    errors = validate_standard(document)
+    if errors:
+        return errors
+    return validate_project_rules(document)
+
+
+def validate_project_rules(document: Any) -> list[str]:
     errors: list[str] = []
     if not isinstance(document, dict):
         return ["document root must be an object"]
@@ -152,12 +208,6 @@ def validate(document: Any) -> list[str]:
                     errors.append(f"{location}: path parameter '{parameter_name}' is not defined")
                 elif not any(parameter.get("required") is True for parameter in matches):
                     errors.append(f"{location}: path parameter '{parameter_name}' must be required")
-
-    for reference in sorted(set(iter_local_references(document))):
-        try:
-            resolve_pointer(document, reference)
-        except KeyError:
-            errors.append(f"unresolved $ref: {reference}")
 
     return errors
 

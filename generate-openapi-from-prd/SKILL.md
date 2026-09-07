@@ -192,11 +192,21 @@ Keep the handoff under one page. Do not repeat the full OpenAPI document.
 
 ## Validate
 
-Run the bundled validator, resolving the script relative to this skill directory:
+Install the pinned validator dependency and run the bundled validator, resolving
+both paths relative to this skill directory:
 
 ```text
+python -m pip install -r requirements.txt
 python scripts/validate_openapi.py <path-to-openapi.yaml>
 ```
+
+The validator requires OpenAPI `3.0.3` and a self-contained contract with only
+local `#/` references. It runs `openapi-spec-validator==0.7.2` standard checks
+before project rules; standard failures stop the remaining checks. Missing
+dependencies or unresolved references must never be treated as a pass. A pass
+does not prove that every reference target has the correct object type, that
+examples match schemas, or that PRD behavior is covered;
+perform the remaining checks below separately.
 
 Fix every reported problem. If the repository already has a stronger OpenAPI linter, run it too. Then verify:
 
